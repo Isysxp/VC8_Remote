@@ -117,6 +117,12 @@ void setpixel(SDL_Surface* surface, int ix, int iy, int color)
 {
 	Uint32* p;
 	unsigned char* pixels = (unsigned char*)surface->pixels;
+
+	if (!window) {
+		changemode(0);
+		exit(0);
+	}
+
 	ix &= MASK;
 	iy &= MASK;
 	p = (Uint32*)(pixels + (iy * surface->pitch) + (ix * sizeof(Uint32)));
@@ -162,6 +168,8 @@ static int thr_fade(void* dummy)
 				break;
 			case SDL_QUIT:
 				SDL_DestroyWindow(window);
+				window = NULL;
+				changemode(0);
 				exit(0);
 			}
 	}
