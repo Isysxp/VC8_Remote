@@ -87,7 +87,7 @@ extern "C" FILE * __cdecl __iob_func(void)
 #endif
 
 #define WINDOW_WIDTH 512
-
+#define MASK (WINDOW_WIDTH * winsize - 1)
 void changemode(int);
 short keyPressed(char);
 short keyReleased(char);
@@ -117,9 +117,12 @@ void setpixel(SDL_Surface* surface, int ix, int iy, int color)
 {
 	Uint32* p;
 	unsigned char* pixels = (unsigned char*)surface->pixels;
-
+	ix &= MASK;
+	iy &= MASK;
 	p = (Uint32*)(pixels + (iy * surface->pitch) + (ix * sizeof(Uint32)));
 	*p = color;
+	if (iy == WINDOW_WIDTH * winsize)
+		ix++;
 }
 
 void sendSR()
@@ -159,7 +162,7 @@ static int thr_fade(void* dummy)
 				break;
 			case SDL_QUIT:
 				SDL_DestroyWindow(window);
-				return -1;
+				exit(0);
 			}
 	}
 	return 0;
@@ -254,15 +257,15 @@ int main(int argc, char* argv[])
 					}
 					for (k = 0; k < 4; k++)
 						coord[k] = buffer[k] & 0x3f;
-					x = ((coord[0] | (coord[1] << 6) + 512) % 1024);
-					y = (1024 - ((coord[2] | (coord[3] << 6) + 512) % 1024));
+					x = (coord[0] | (coord[1] << 6) + 512) % 1024;
+					y = 1024 - ((coord[2] | (coord[3] << 6) + 512) % 1024);
 					x /= (winsize == 1) ? 2 : 1;
 					y /= (winsize == 1) ? 2 : 1;
 					k = WINDOW_WIDTH * winsize;
 					setpixel(windowSurface, x, y, 0xf800);
-					if (x < k) setpixel(windowSurface, x + 1, y, 0xf800);
-					if (y < k) setpixel(windowSurface, x, y + 1, 0xf800);
-					if (y < k && x < k) setpixel(windowSurface, x + 1, y + 1, 0xf800);
+					setpixel(windowSurface, x + 1, y, 0xf800);
+					setpixel(windowSurface, x, y + 1, 0xf800);
+					setpixel(windowSurface, x + 1, y + 1, 0xf800);
 
 
 					// -------------------------------------------------------
