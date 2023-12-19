@@ -149,7 +149,7 @@ int thr_recv(void* dummy)
 	{
 		{
 			n = recv(sockfd, buffer, 5, MSG_PEEK);
-			if (n < 0)
+			if (n <= 0)
 			{
 				changemode(0);
 				perror("ERROR receiving from socket");
@@ -270,7 +270,7 @@ int main(int argc, char* argv[])
 	}
 #if defined (__linux__)
 	struct timeval timeout;
-	timeout.tv_sec = 10;
+	timeout.tv_sec = 1;
 	timeout.tv_usec = 0;
 	setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
 #endif
