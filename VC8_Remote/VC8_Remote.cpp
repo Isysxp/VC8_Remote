@@ -94,6 +94,7 @@ short keyReleased(char);
 
 short old_sr = 0;
 short sr = 0;
+int run_thr = 1;
 SDL_Window* window = NULL;
 SDL_Surface* windowSurface = NULL;
 int sockfd;
@@ -118,11 +119,6 @@ void setpixel(SDL_Surface* surface, int ix, int iy, int color)
 	Uint32* p;
 	unsigned char* pixels = (unsigned char*)surface->pixels;
 
-	if (!window) {
-		changemode(0);
-		exit(0);
-	}
-
 	ix &= MASK;
 	iy &= MASK;
 	p = (Uint32*)(pixels + (iy * surface->pitch) + (ix * sizeof(Uint32)));
@@ -142,99 +138,12 @@ void sendSR()
 
 }
 
-static int thr_fade(void* dummy)
+int thr_recv(void* dummy)
 {
-	SDL_Event event;
-
-	SDL_Init(SDL_INIT_VIDEO);
-	window = SDL_CreateWindow("VC8 Display", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH * winsize, WINDOW_WIDTH * winsize, SDL_WINDOW_SHOWN);
-	windowSurface = SDL_GetWindowSurface(window);
-
-	while (1)
-	{
-		fade(windowSurface);
-		SDL_UpdateWindowSurface(window);
-		if (SDL_PollEvent(&event))
-			switch (event.type)
-			{
-			case SDL_KEYDOWN:
-				keyPressed(event.key.keysym.sym);
-				if (!event.key.repeat)
-					sendSR();
-				break;
-			case SDL_KEYUP:
-				keyReleased(event.key.keysym.sym);
-				sendSR();
-				break;
-			case SDL_QUIT:
-				SDL_DestroyWindow(window);
-				window = NULL;
-				changemode(0);
-				exit(0);
-			}
-	}
-	return 0;
-}
-
-
-int main(int argc, char* argv[])
-{
-
-	int portno = 2222, n;
-	struct sockaddr_in serv_addr;
-	struct hostent* server;
-	char buffer[256], ch = 0;
-	int k, i = 0;
+	char buffer[256];
+	int k, i = 0, n;
 	char coord[4];
 	int x, y;
-	SDL_Thread* sthrd;
-	SDL_Event stop;
-
-	if (argc != 2 && argc != 3)
-	{
-		printf("Usage: vc8_remote <host> <-L>\r\n");
-		exit(1);
-	}
-
-	changemode(1);	// used for kbhit()
-	SDL_Init(SDL_INIT_VIDEO);
-
-#ifdef _WIN32
-	static WSADATA winsockdata;
-	WSAStartup(MAKEWORD(1, 1), &winsockdata);
-#endif
-
-	// create socket
-	sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (sockfd < 0)
-	{
-		perror("ERROR opening socket");
-		exit(1);
-	}
-	server = gethostbyname(argv[1]);
-	if (server == NULL)
-	{
-		perror("ERROR no such host");
-		exit(1);
-	}
-	memset((void*)&serv_addr, '\0', sizeof(serv_addr));
-	serv_addr.sin_family = AF_INET;
-	memcpy((void*)&serv_addr.sin_addr.s_addr, (void*)server->h_addr, server->h_length);
-	serv_addr.sin_port = htons(portno);
-	if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0)
-	{
-		perror("ERROR connecting");
-		exit(1);
-	}
-	stop.type = SDL_QUIT;
-
-	if (argc == 3)  // Any arg will do!
-		winsize = 2;
-
-	sthrd = SDL_CreateThread(thr_fade, "FadeThread", NULL);
-
-	while (!windowSurface)
-		SDL_Delay(10);
 
 	do
 	{
@@ -275,38 +184,114 @@ int main(int argc, char* argv[])
 					setpixel(windowSurface, x, y + 1, 0xf800);
 					setpixel(windowSurface, x + 1, y + 1, 0xf800);
 
-
-					// -------------------------------------------------------
-/*
-					Keyup and Keydown are really difficult to implement.
-					The original code depended upon key repeat. Not reliable.
-*/
-					if (_kbhit())
-					{
-#ifdef _WIN32
-						ch = _getch();
-#else
-						ch = getchar();
-#endif
-						//sr = keyPressed(ch);
-/*
-						if (sr)
-						{
-							buffer[0] = 0; //(sr & 0xF);
-							buffer[1] = ((sr & 0xF00) >> 4) | (sr & 0xF);
-							// s.write((sr & 0xF) | ((sr & 0xF00) >> 4));
-							n = write(sockfd, buffer, 2);
-						}
-*/
-					}
 					// -------------------------------------------------------
 				}
 			}
 		}
-	} while (ch != 'x');
+	} while (run_thr);   // Exit flag
+	close(sockfd);
+	return 0;
+}
+
+int main_loop()
+{
+	SDL_Event event;
+
+	SDL_Init(SDL_INIT_VIDEO);
+	window = SDL_CreateWindow("VC8 Display", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH * winsize, WINDOW_WIDTH * winsize, SDL_WINDOW_SHOWN);
+	windowSurface = SDL_GetWindowSurface(window);
+
+	while (1)
+	{
+		fade(windowSurface);
+		SDL_UpdateWindowSurface(window);
+		if (SDL_PollEvent(&event))
+			switch (event.type)
+			{
+			case SDL_KEYDOWN:
+				keyPressed(event.key.keysym.sym);
+				if (!event.key.repeat)
+					sendSR();
+				break;
+			case SDL_KEYUP:
+				keyReleased(event.key.keysym.sym);
+				sendSR();
+				break;
+			case SDL_QUIT:
+				return -1;
+			}
+	}
+	return 0;
+}
+
+
+int main(int argc, char* argv[])
+{
+
+	int portno = 2222;
+	struct sockaddr_in serv_addr;
+	struct hostent* server;
+	SDL_Thread* sthrd;
+
+	if (argc != 2 && argc != 3)
+	{
+		printf("Usage: vc8_remote <host> <-L>\r\n");
+		exit(1);
+	}
+
+	changemode(1);	// used for kbhit()
+	SDL_Init(SDL_INIT_VIDEO);
+
+#ifdef _WIN32
+	static WSADATA winsockdata;
+	WSAStartup(MAKEWORD(1, 1), &winsockdata);
+#endif
+
+	// create socket
+	sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (sockfd < 0)
+	{
+		perror("ERROR opening socket");
+		exit(1);
+	}
+	server = gethostbyname(argv[1]);
+	if (server == NULL)
+	{
+		perror("ERROR no such host");
+		exit(1);
+	}
+#if defined (__linux__)
+	struct timeval timeout;
+	timeout.tv_sec = 10;
+	timeout.tv_usec = 0;
+	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,sizeof timeout) < 0)
+#endif
+#ifdef _WIN32
+	DWORD timeout = 1000;
+	setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
+#endif
+	memset((void*)&serv_addr, '\0', sizeof(serv_addr));
+	serv_addr.sin_family = AF_INET;
+	memcpy((void*)&serv_addr.sin_addr.s_addr, (void*)server->h_addr, server->h_length);
+	serv_addr.sin_port = htons(portno);
+	if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0)
+	{
+		perror("ERROR connecting");
+		exit(1);
+	}
+
+	if (argc == 3)  // Any arg will do!
+		winsize = 2;
+
+	sthrd = SDL_CreateThread(thr_recv, "ReceiveThread", NULL);
+
+	main_loop();
+
+	run_thr = 0;	// Cause thread to exit;
 	changemode(0);	// used for kbhit()
-	SDL_PushEvent(&stop);
 	SDL_WaitThread(sthrd, NULL);
+	SDL_DestroyWindow(window);
+	SDL_Quit();
 	return EXIT_SUCCESS;
 }
 
