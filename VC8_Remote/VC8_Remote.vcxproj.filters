@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="VC8_Remote.cpp">
+    <ClCompile Include="vc8_remote.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
