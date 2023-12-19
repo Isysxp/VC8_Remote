@@ -159,6 +159,12 @@ int thr_recv(void* dummy)
 			if (n >= 5)
 			{
 				n = recv(sockfd, buffer, 1, 0);
+				if (n < 0)
+				{
+					changemode(0);
+					perror("ERROR reading from socket");
+					exit(1);
+				}
 				if (buffer[0] == 0)
 					i++;
 				else
