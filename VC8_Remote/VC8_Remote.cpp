@@ -151,6 +151,7 @@ int thr_recv(void* dummy)
 			n = recv(sockfd, buffer, 5, MSG_PEEK);
 			if (n < 0)
 			{
+				changemode(0);
 				perror("ERROR receiving from socket");
 				exit(1);
 			}
@@ -169,6 +170,7 @@ int thr_recv(void* dummy)
 					n = recv(sockfd, buffer, 4, 0);
 					if (n < 0)
 					{
+						changemode(0);
 						perror("ERROR reading from socket");
 						exit(1);
 					}
