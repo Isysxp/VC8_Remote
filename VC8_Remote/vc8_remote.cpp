@@ -40,8 +40,8 @@ in this Software without prior written authorization from the author.
 	The screen decay constant is set in fade(...). Please change if required. (usual range 1..5).
 	*
 	*
-	* Build with: gcc -o vc8_remote vc8_remote.cpp -lSDL2
-	* Call with: ./remote_vc8 <PiDP8I host> <-L>
+	* Build with: (Linux, MacOSX) gcc -o vc8_remote vc8_remote.cpp -lSDL2
+	* Call with: ./vc8_remote <PiDP8I host> <-L>
 	* the -L option will double the window size.
 */
 #ifdef _WIN32
