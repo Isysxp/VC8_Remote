@@ -97,6 +97,8 @@ short sr = 0;
 int run_thr = 1;
 SDL_Window* window = NULL;
 SDL_Surface* windowSurface = NULL;
+SDL_Renderer* rend;
+SDL_Texture* tex;
 int sockfd;
 int winsize = 1;        // Default small window
 
@@ -123,8 +125,7 @@ void setpixel(SDL_Surface* surface, int ix, int iy, int color)
 	iy &= MASK;
 	p = (Uint32*)(pixels + (iy * surface->pitch) + (ix * sizeof(Uint32)));
 	*p = color;
-	if (iy == WINDOW_WIDTH * winsize)
-		ix++;
+
 }
 
 void sendSR()
@@ -207,12 +208,28 @@ int main_loop()
 
 	SDL_Init(SDL_INIT_VIDEO);
 	window = SDL_CreateWindow("VC8 Display", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH * winsize, WINDOW_WIDTH * winsize, SDL_WINDOW_SHOWN);
-	windowSurface = SDL_GetWindowSurface(window);
+	windowSurface = SDL_CreateRGBSurface(0, WINDOW_WIDTH * winsize, WINDOW_WIDTH * winsize, 32, 0, 0, 0, 0);
+
+	rend = SDL_GetRenderer(window);
+	if (rend)
+		SDL_DestroyRenderer(rend);
+	SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
+	rend = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+	if (!rend)
+		printf("%s\r\n", SDL_GetError());
+	tex = SDL_CreateTextureFromSurface(rend, windowSurface);
+	if (!tex)
+		printf("%s\r\n", SDL_GetError());
+
+	if (!tex || !rend || !window || !windowSurface)
+		exit(1);
 
 	while (1)
 	{
 		fade(windowSurface);
-		SDL_UpdateWindowSurface(window);
+		SDL_UpdateTexture(tex, NULL, windowSurface->pixels, windowSurface->pitch);
+		SDL_RenderCopy(rend, tex, NULL, NULL);
+		SDL_RenderPresent(rend);
 		if (SDL_PollEvent(&event))
 			switch (event.type)
 			{
