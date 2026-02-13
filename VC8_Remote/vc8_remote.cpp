@@ -75,7 +75,7 @@ int _kbhit(void);
 #include <conio.h>
 FILE _iob[] = { *stdin, *stdout, *stderr };
 
-extern "C" FILE * __cdecl __iob_func(void)
+extern "C" FILE* __cdecl __iob_func(void)
 {
 	return _iob;
 }
@@ -102,7 +102,9 @@ SDL_Renderer* rend;
 SDL_Texture* tex;
 int sockfd;
 int winsize = 1;        // Default small window
+#ifdef _WIN32
 OVERLAPPED osReader = { 0 }, wtReader = { 0 };
+#endif
 
 
 void fade(SDL_Surface* windowSurface)
@@ -143,7 +145,7 @@ void sendSR()
 	// printf("SR:%o\r\n",sr);
 
 }
-
+#ifdef _WIN32
 void PrintCommState(DCB dcb)
 {
 	//  Print some of the DCB structure values
@@ -155,7 +157,7 @@ void PrintCommState(DCB dcb)
 }
 
 void ReadSerial(HANDLE hComm, int nBytes, char* buffer) {
-	DWORD bread,eventMask=0;
+	DWORD bread, eventMask = 0;
 
 	while (nBytes) {
 		while (true) {
@@ -173,7 +175,7 @@ int thr_serial(void* dummy)
 	HANDLE hComm;
 	DWORD bread;
 	DCB dcb;
-	BOOL fSuccess,rd_wait=FALSE;
+	BOOL fSuccess, rd_wait = FALSE;
 	const TCHAR* pcCommPort = TEXT("\\\\.\\COM19"); //  Most systems have a COM1 port
 	char buffer[256];
 	int k, i = 0;
@@ -187,7 +189,7 @@ int thr_serial(void* dummy)
 	timeouts.WriteTotalTimeoutConstant = 0;
 
 
-	hComm = CreateFile(pcCommPort,GENERIC_READ | GENERIC_WRITE,0,0,OPEN_EXISTING, NULL,NULL);
+	hComm = CreateFile(pcCommPort, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, NULL, NULL);
 	if (hComm == INVALID_HANDLE_VALUE) {
 		printf("The Comport is closed or taken by other hardware/software!\n\r");
 	}
@@ -260,25 +262,27 @@ int thr_serial(void* dummy)
 	} while (run_thr);
 	return 0;
 }
+#endif
 
 int thr_recv(void* dummy)
 {
 	char buffer[256];
 	int k, i = 0, n;
 	char coord[4];
-	int x, y, errcode,err= EAGAIN;
+	int x, y, errcode, err = EAGAIN;
 
 	do
 	{
 		{
 			n = recv(sockfd, buffer, 5, MSG_PEEK);
-			if (n < 0 && errno)
-			{
-				errcode = errno;
-				changemode(0);
-				perror("ERROR receiving from socket");
-				exit(1);
-			}
+			if (errno != EAGAIN)
+				if (n < 0 && errno)
+				{
+					errcode = errno;
+					changemode(0);
+					perror("ERROR receiving from socket");
+					exit(1);
+				}
 
 			if (n >= 5)
 			{
@@ -568,7 +572,8 @@ short keyReleased(char key)
 
 #ifdef _WIN32
 void changemode(int dir)
-{}
+{
+}
 
 #else
 void changemode(int dir)
