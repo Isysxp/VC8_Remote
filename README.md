@@ -8,4 +8,8 @@ Usage: Boot the PiDP8I with the instruction field switches set to 4. Virtually a
 Connect with ./vc8_remote <name of your PiDP8I> <-L>   -L switch doubles the screen size for high DPI displays.<br>
 <br>
 Ian Schofield Dec 2023<br>
+<br>
+I have added a minor update that prevents this app from exiting with a network error if you happen to stop Spacewar.<br>
+<br>
+Ian Schofield Feb 2026<br>
 
