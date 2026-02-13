@@ -44,6 +44,7 @@ in this Software without prior written authorization from the author.
 	* Call with: ./vc8_remote <PiDP8I host> <-L>
 	* the -L option will double the window size.
 */
+
 #ifdef _WIN32
 #include <stdio.h>
 #include <string.h>
@@ -101,6 +102,7 @@ SDL_Renderer* rend;
 SDL_Texture* tex;
 int sockfd;
 int winsize = 1;        // Default small window
+OVERLAPPED osReader = { 0 }, wtReader = { 0 };
 
 
 void fade(SDL_Surface* windowSurface)
@@ -119,6 +121,9 @@ void fade(SDL_Surface* windowSurface)
 void setpixel(SDL_Surface* surface, int ix, int iy, int color)
 {
 	Uint32* p;
+
+	if (!surface)
+		return;
 	unsigned char* pixels = (unsigned char*)surface->pixels;
 
 	ix &= MASK;
@@ -139,19 +144,137 @@ void sendSR()
 
 }
 
+void PrintCommState(DCB dcb)
+{
+	//  Print some of the DCB structure values
+	printf("\nBaudRate = %d, ByteSize = %d, Parity = %d, StopBits = %d\n",
+		dcb.BaudRate,
+		dcb.ByteSize,
+		dcb.Parity,
+		dcb.StopBits);
+}
+
+void ReadSerial(HANDLE hComm, int nBytes, char* buffer) {
+	DWORD bread,eventMask=0;
+
+	while (nBytes) {
+		while (true) {
+			WaitCommEvent(hComm, &eventMask, NULL);
+			if (EV_RXCHAR & eventMask)
+				break;
+		}
+		ReadFile(hComm, buffer++, 1, &bread, NULL);
+		nBytes--;
+	}
+}
+
+int thr_serial(void* dummy)
+{
+	HANDLE hComm;
+	DWORD bread;
+	DCB dcb;
+	BOOL fSuccess,rd_wait=FALSE;
+	const TCHAR* pcCommPort = TEXT("\\\\.\\COM19"); //  Most systems have a COM1 port
+	char buffer[256];
+	int k, i = 0;
+	char coord[4];
+	int x, y;
+	COMMTIMEOUTS timeouts;
+	timeouts.ReadIntervalTimeout = MAXDWORD;
+	timeouts.ReadTotalTimeoutMultiplier = 0;
+	timeouts.ReadTotalTimeoutConstant = 0;
+	timeouts.WriteTotalTimeoutMultiplier = 0;
+	timeouts.WriteTotalTimeoutConstant = 0;
+
+
+	hComm = CreateFile(pcCommPort,GENERIC_READ | GENERIC_WRITE,0,0,OPEN_EXISTING, NULL,NULL);
+	if (hComm == INVALID_HANDLE_VALUE) {
+		printf("The Comport is closed or taken by other hardware/software!\n\r");
+	}
+	SecureZeroMemory(&dcb, sizeof(DCB));
+	dcb.DCBlength = sizeof(DCB);
+
+	//  Build on the current configuration by first retrieving all current
+	//  settings.
+	fSuccess = GetCommState(hComm, &dcb);
+
+	if (!fSuccess)
+	{
+		//  Handle the error.
+		printf("GetCommState failed with error %d.\n", GetLastError());
+		return (2);
+	}
+
+	//  Fill in some DCB values and set the com state: 
+	//  57,600 bps, 8 data bits, no parity, and 1 stop bit.
+	dcb.BaudRate = CBR_256000;     //  baud rate
+	dcb.ByteSize = 8;             //  data size, xmit and rcv
+	dcb.Parity = NOPARITY;      //  parity bit
+	dcb.StopBits = ONESTOPBIT;    //  stop bit
+	dcb.fDtrControl = 0;
+	dcb.fRtsControl = 0;
+
+	fSuccess = SetCommState(hComm, &dcb);
+
+	if (!fSuccess)
+	{
+		//  Handle the error.
+		printf("SetCommState failed with error %d.\n", GetLastError());
+		return (3);
+	}
+	SetCommTimeouts(hComm, &timeouts);
+	osReader.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	wtReader.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	SetCommMask(hComm, EV_RXCHAR);
+	EscapeCommFunction(hComm, SETDTR);
+
+	do {
+		//ReadSerial(hComm, 5, buffer);
+		if (true)
+		{
+			ReadSerial(hComm, 1, buffer);
+			if (buffer[0] == 0)
+				i++;
+			else
+				i = 0;
+
+			if (i == 2)
+			{
+				i = 0;
+				ReadSerial(hComm, 4, buffer);
+				for (k = 0; k < 4; k++)
+					coord[k] = buffer[k] & 0x3f;
+				x = (coord[0] | (coord[1] << 6) + 512) % 1024;
+				y = 1024 - ((coord[2] | (coord[3] << 6) + 512) % 1024);
+				x /= (winsize == 1) ? 2 : 1;
+				y /= (winsize == 1) ? 2 : 1;
+				k = WINDOW_WIDTH * winsize;
+				setpixel(windowSurface, x, y, 0xf800);
+				setpixel(windowSurface, x + 1, y, 0xf800);
+				setpixel(windowSurface, x, y + 1, 0xf800);
+				setpixel(windowSurface, x + 1, y + 1, 0xf800);
+
+				// -------------------------------------------------------
+			}
+		}
+	} while (run_thr);
+	return 0;
+}
+
 int thr_recv(void* dummy)
 {
 	char buffer[256];
 	int k, i = 0, n;
 	char coord[4];
-	int x, y;
+	int x, y, errcode,err= EAGAIN;
 
 	do
 	{
 		{
 			n = recv(sockfd, buffer, 5, MSG_PEEK);
-			if (n <= 0)
+			if (n < 0 && errno)
 			{
+				errcode = errno;
 				changemode(0);
 				perror("ERROR receiving from socket");
 				exit(1);
@@ -267,6 +390,12 @@ int main(int argc, char* argv[])
 	changemode(1);	// used for kbhit()
 	SDL_Init(SDL_INIT_VIDEO);
 
+#ifdef USE_SERIAL
+
+	sthrd = SDL_CreateThread(thr_serial, "ReceiveThread", NULL);
+
+#else
+
 #ifdef _WIN32
 	static WSADATA winsockdata;
 	WSAStartup(MAKEWORD(1, 1), &winsockdata);
@@ -310,6 +439,7 @@ int main(int argc, char* argv[])
 
 	sthrd = SDL_CreateThread(thr_recv, "ReceiveThread", NULL);
 
+#endif
 	main_loop();
 
 	run_thr = 0;	// Cause thread to exit;
